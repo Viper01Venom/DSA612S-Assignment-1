@@ -2,58 +2,127 @@ syntax = "proto3";
 
 package carrental;
 
-// Car rental gRPC service
-service CarRental {
-  rpc AddCar(Car) returns (AddCarResponse);
-  rpc CreateUsers(stream User) returns (CreateUsersResponse);
-  rpc ListAvailableCars(Empty) returns (stream Car);
-  rpc SearchCar(SearchRequest) returns (Car);
-  rpc AddToCart(CartRequest) returns (CartResponse);
-  rpc PlaceReservation(ReservationRequest) returns (ReservationResponse);
+option java_multiple_files = true;
+option go_package = "carrentalpb";
+
+enum CarStatus {
+  UNKNOWN = 0;
+  AVAILABLE = 1;
+  UNAVAILABLE = 2;
+  RENTED = 3;
+}
+
+enum UserRole {
+  ROLE_UNKNOWN = 0;
+  ROLE_CUSTOMER = 1;
+  ROLE_ADMIN = 2;
 }
 
 message Car {
-  string plate = 1;
-  string brand = 2;
-  string model = 3;
-  int32 year = 4;
-  double price_per_day = 5;
-  bool available = 6;
-}
-
-message AddCarResponse {
-  string message = 1;
+  string plate = 1;        // unique key (e.g. "ABC-123")
+  string make = 2;         // "Toyota"
+  string model = 3;        // "Corolla"
+  int32 year = 4;          // 2020
+  double daily_price = 5;  // per-day price
+  int32 mileage = 6;
+  CarStatus status = 7;
 }
 
 message User {
-  string id = 1;
+  string id = 1;        // unique user id
   string name = 2;
+  UserRole role = 3;
+  string email = 4;
 }
 
-message CreateUsersResponse {
-  int32 count = 1;
+message AddCarRequest {
+  Car car = 1;
 }
 
-message Empty {}
+message AddCarResponse {
+  string plate = 1;
+  string message = 2;
+}
 
-message SearchRequest {
+message UpdateCarRequest {
+  string plate = 1;
+  Car car = 2; // fields to replace or partially update
+}
+
+message RemoveCarRequest {
   string plate = 1;
 }
 
-message CartRequest {
-  string userId = 1;
+message RemoveCarResponse {
+  repeated Car cars = 1; // return updated catalog per assignment
+}
+
+message SearchCarRequest {
+  string plate = 1;
+}
+
+message SearchCarResponse {
+  bool found = 1;
+  Car car = 2;
+  string message = 3;
+}
+
+message ListFilter {
+  string text = 1; // optional filter text (make/model/year)
+}
+
+message CartItem {
+  string user_id = 1;
   string plate = 2;
+  string start_date = 3; // use RFC3339 or ISO date-time (see README)
+  string end_date = 4;
 }
 
-message CartResponse {
-  string message = 1;
+message AddToCartResponse {
+  bool ok = 1;
+  string message = 2;
 }
 
-message ReservationRequest {
-  string userId = 1;
+message PlaceReservationResponse {
+  bool ok = 1;
+  string message = 2;
+  double total_price = 3;
 }
 
-message ReservationResponse {
-  string message = 1;
-  repeated Car reservedCars = 2;
+message Reservation {
+  string id = 1;
+  string user_id = 2;
+  string plate = 3;
+  string start_date = 4;
+  string end_date = 5;
+  double total_price = 6;
+}
+
+message CreateUsersResponse {
+  int32 created = 1;
+  string message = 2;
+}
+
+// Service definition
+service CarRental {
+  // Admin operations
+  rpc AddCar (AddCarRequest) returns (AddCarResponse);
+  rpc UpdateCar (UpdateCarRequest) returns (AddCarResponse);
+  rpc RemoveCar (RemoveCarRequest) returns (RemoveCarResponse);
+
+  // Create users via client-streaming: client streams User messages; server returns summary response
+  rpc CreateUsers (stream User) returns (CreateUsersResponse);
+
+  // Customer operations
+  // server-streaming: returns available cars one-by-one
+  rpc ListAvailableCars (ListFilter) returns (stream Car);
+
+  // unary search
+  rpc SearchCar (SearchCarRequest) returns (SearchCarResponse);
+
+  // add to cart: unary to add a CartItem
+  rpc AddToCart (CartItem) returns (AddToCartResponse);
+
+  // Place reservation: unary - server verifies availability, calculates total, returns response
+  rpc PlaceReservation (User) returns (PlaceReservationResponse);
 }
