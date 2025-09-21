@@ -1,1 +1,59 @@
-// proto file will go here
+syntax = "proto3";
+
+package carrental;
+
+// Car rental gRPC service
+service CarRental {
+  rpc AddCar(Car) returns (AddCarResponse);
+  rpc CreateUsers(stream User) returns (CreateUsersResponse);
+  rpc ListAvailableCars(Empty) returns (stream Car);
+  rpc SearchCar(SearchRequest) returns (Car);
+  rpc AddToCart(CartRequest) returns (CartResponse);
+  rpc PlaceReservation(ReservationRequest) returns (ReservationResponse);
+}
+
+message Car {
+  string plate = 1;
+  string brand = 2;
+  string model = 3;
+  int32 year = 4;
+  double price_per_day = 5;
+  bool available = 6;
+}
+
+message AddCarResponse {
+  string message = 1;
+}
+
+message User {
+  string id = 1;
+  string name = 2;
+}
+
+message CreateUsersResponse {
+  int32 count = 1;
+}
+
+message Empty {}
+
+message SearchRequest {
+  string plate = 1;
+}
+
+message CartRequest {
+  string userId = 1;
+  string plate = 2;
+}
+
+message CartResponse {
+  string message = 1;
+}
+
+message ReservationRequest {
+  string userId = 1;
+}
+
+message ReservationResponse {
+  string message = 1;
+  repeated Car reservedCars = 2;
+}
