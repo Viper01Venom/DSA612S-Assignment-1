@@ -1,12 +1,6 @@
 import ballerina/io;
 import ballerinax/grpc;
 
-
-/*
- A simple demo client for the CarRental gRPC service.
- It's organized into small helper functions so it's readable and easy to tweak.
-*/
-
 public function main() returns error? {
     string target = "http://localhost:9090";
     car_rental_pb:CarRentalClient client = check new(target);
