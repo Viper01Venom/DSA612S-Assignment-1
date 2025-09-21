@@ -2,127 +2,92 @@ syntax = "proto3";
 
 package carrental;
 
-option java_multiple_files = true;
-option go_package = "carrentalpb";
+// --- Messages ---
 
-enum CarStatus {
-  UNKNOWN = 0;
-  AVAILABLE = 1;
-  UNAVAILABLE = 2;
-  RENTED = 3;
-}
-
-enum UserRole {
-  ROLE_UNKNOWN = 0;
-  ROLE_CUSTOMER = 1;
-  ROLE_ADMIN = 2;
+message Context {
+  string user_id = 1;
 }
 
 message Car {
-  string plate = 1;        // unique key (e.g. "ABC-123")
-  string make = 2;         // "Toyota"
-  string model = 3;        // "Corolla"
-  int32 year = 4;          // 2020
-  double daily_price = 5;  // per-day price
+  string plate = 1;
+  string make = 2;
+  string model = 3;
+  int32 year = 4;
+  double daily_price = 5;
   int32 mileage = 6;
-  CarStatus status = 7;
+  string status = 7; // "AVAILABLE", "UNAVAILABLE", "RENTED"
+  Context context = 8;
 }
 
 message User {
-  string id = 1;        // unique user id
+  string id = 1;
   string name = 2;
-  UserRole role = 3;
+  string role = 3;   // "ADMIN" or "CUSTOMER"
   string email = 4;
 }
 
-message AddCarRequest {
+message CarResponse {
   Car car = 1;
-}
-
-message AddCarResponse {
-  string plate = 1;
   string message = 2;
 }
 
-message UpdateCarRequest {
-  string plate = 1;
-  Car car = 2; // fields to replace or partially update
+message CreateUsersResponse {
+  string message = 1;
 }
 
 message RemoveCarRequest {
   string plate = 1;
+  Context context = 2;
 }
 
-message RemoveCarResponse {
-  repeated Car cars = 1; // return updated catalog per assignment
+message ListAvailableRequest {
+  Context context = 1;
 }
 
 message SearchCarRequest {
   string plate = 1;
-}
-
-message SearchCarResponse {
-  bool found = 1;
-  Car car = 2;
-  string message = 3;
-}
-
-message ListFilter {
-  string text = 1; // optional filter text (make/model/year)
+  Context context = 2;
 }
 
 message CartItem {
   string user_id = 1;
   string plate = 2;
-  string start_date = 3; // use RFC3339 or ISO date-time (see README)
+  string start_date = 3;
   string end_date = 4;
 }
 
-message AddToCartResponse {
-  bool ok = 1;
-  string message = 2;
+message StatusResponse {
+  string message = 1;
 }
 
-message PlaceReservationResponse {
-  bool ok = 1;
-  string message = 2;
-  double total_price = 3;
+message PlaceReservationRequest {
+  string user_id = 1;
 }
 
 message Reservation {
   string id = 1;
   string user_id = 2;
-  string plate = 3;
-  string start_date = 4;
-  string end_date = 5;
-  double total_price = 6;
+  repeated CartItem items = 3;
+  double total_price = 4;
 }
 
-message CreateUsersResponse {
-  int32 created = 1;
+message ReservationResponse {
+  Reservation reservation = 1;
   string message = 2;
 }
 
-// Service definition
-service CarRental {
-  // Admin operations
-  rpc AddCar (AddCarRequest) returns (AddCarResponse);
-  rpc UpdateCar (UpdateCarRequest) returns (AddCarResponse);
-  rpc RemoveCar (RemoveCarRequest) returns (RemoveCarResponse);
+// --- Service ---
 
-  // Create users via client-streaming: client streams User messages; server returns summary response
-  rpc CreateUsers (stream User) returns (CreateUsersResponse);
+service CarRentalService {
+  rpc add_car(Car) returns (CarResponse);
+  rpc update_car(Car) returns (CarResponse);
+  rpc remove_car(RemoveCarRequest) returns (stream Car);
 
-  // Customer operations
-  // server-streaming: returns available cars one-by-one
-  rpc ListAvailableCars (ListFilter) returns (stream Car);
+  rpc create_users(stream User) returns (CreateUsersResponse);
 
-  // unary search
-  rpc SearchCar (SearchCarRequest) returns (SearchCarResponse);
+  rpc list_available_cars(ListAvailableRequest) returns (stream Car);
+  rpc search_car(SearchCarRequest) returns (CarResponse);
 
-  // add to cart: unary to add a CartItem
-  rpc AddToCart (CartItem) returns (AddToCartResponse);
-
-  // Place reservation: unary - server verifies availability, calculates total, returns response
-  rpc PlaceReservation (User) returns (PlaceReservationResponse);
+  rpc add_to_cart(CartItem) returns (StatusResponse);
+  rpc place_reservation(PlaceReservationRequest) returns (ReservationResponse);
 }
