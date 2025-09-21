@@ -1,133 +1,84 @@
 import ballerina/io;
 import ballerinax/grpc;
 
+
 public function main() returns error? {
-    string target = "http://localhost:9090";
-    car_rental_pb:CarRentalClient client = check new(target);
+    string url = "http://localhost:9090";
+    car_rental_pb:CarRentalServiceClient client = check new (url);
 
-    io:println("Starting Car Rental client demo...");
+    io:println("=== Car Rental Client Demo ===");
 
-    // create some users via client-streaming
-    check createSampleUsers(client);
-
-    // add a couple of cars (admin style)
-    check addSampleCars(client);
-
-    // list available cars (server-streaming)
-    check showAvailableCars(client);
-
-    // try a quick search
-    check searchForCar(client, "ABC-123");
-
-    // add a rental request to the cart for user u1
-    check addItemToCart(client, "u1", "ABC-123", "2025-09-25T00:00:00Z", "2025-09-27T00:00:00Z");
-
-    // place reservation for u1
-    check placeReservationForUser(client, "u1");
-
-    io:println("Client demo finished. Bye!");
-    return;
-}
-
-function createSampleUsers(car_rental_pb:CarRentalClient client) returns error? {
-    io:println("[createSampleUsers] streaming users to server...");
+    // 1) Create some users (client-streaming)
+    io:println("\n-- Creating users --");
     stream<car_rental_pb:User, grpc:Error?> userStream = new;
-    // a few example users
-    check userStream->send({ id: "u1", name: "Alice", email: "alice@example.com", role: car_rental_pb:UserRole.ROLE_CUSTOMER });
-    check userStream->send({ id: "admin1", name: "Admin", email: "admin@example.com", role: car_rental_pb:UserRole.ROLE_ADMIN });
-    check userStream->send({ id: "u2", name: "Bob", email: "bob@example.com", role: car_rental_pb:UserRole.ROLE_CUSTOMER });
+    check userStream->send({id: "admin1", name: "Admin", role: "ADMIN", email: "admin@example.com"});
+    check userStream->send({id: "u1", name: "Alice", role: "CUSTOMER", email: "alice@example.com"});
+    check userStream->send({id: "u2", name: "Bob", role: "CUSTOMER", email: "bob@example.com"});
     check userStream->complete();
 
-    car_rental_pb:CreateUsersResponse resp = check client->CreateUsers(userStream);
-    io:println("[createSampleUsers] server responded: created=" + resp.created.toString() + ", message=\"" + resp.message + "\"");
-    return;
-}
+    car_rental_pb:CreateUsersResponse cuResp = check client->create_users(userStream);
+    io:println("CreateUsers -> " + cuResp.message);
 
-function addSampleCars(car_rental_pb:CarRentalClient client) returns error? {
-    io:println("[addSampleCars] adding two cars...");
-    var r1 = check client->AddCar({
-        car: {
-            plate: "ABC-123",
-            make: "Toyota",
-            model: "Corolla",
-            year: 2020,
-            daily_price: 30.0,
-            mileage: 50000,
-            status: car_rental_pb:CarStatus.AVAILABLE
-        }
+    // 2) Admin adds cars
+    io:println("\n-- Adding cars --");
+    var addResp1 = check client->add_car({
+        plate: "ABC-123",
+        make: "Toyota",
+        model: "Corolla",
+        year: 2020,
+        daily_price: 30.0,
+        mileage: 50000,
+        status: "AVAILABLE",
+        context: {user_id: "admin1"}
     });
-    io:println("[addSampleCars] " + r1.message);
+    io:println("AddCar 1 -> " + addResp1.message);
 
-    var r2 = check client->AddCar({
-        car: {
-            plate: "XYZ-999",
-            make: "Honda",
-            model: "Civic",
-            year: 2019,
-            daily_price: 28.0,
-            mileage: 42000,
-            status: car_rental_pb:CarStatus.AVAILABLE
-        }
+    var addResp2 = check client->add_car({
+        plate: "XYZ-999",
+        make: "Honda",
+        model: "Civic",
+        year: 2019,
+        daily_price: 28.0,
+        mileage: 42000,
+        status: "AVAILABLE",
+        context: {user_id: "admin1"}
     });
-    io:println("[addSampleCars] " + r2.message);
-    return;
-}
+    io:println("AddCar 2 -> " + addResp2.message);
 
-function showAvailableCars(car_rental_pb:CarRentalClient client) returns error? {
-    io:println("[showAvailableCars] requesting available cars...");
-    stream<car_rental_pb:Car, grpc:Error?> s = check client->ListAvailableCars({ text: "" });
-
-    // print each car as it arrives
-    check s.forEach(function (car_rental_pb:Car c) {
-        // be forgiving about field types (generator may map enums differently)
-        io:println("  -> " + c.plate + " | " + c.make + " " + c.model + " | price/day: " + c.daily_price.toString());
+    // 3) Customer lists available cars
+    io:println("\n-- Listing available cars (customer u1) --");
+    stream<car_rental_pb:Car, error?> availStream = 
+        check client->list_available_cars({context: {user_id: "u1"}});
+    check availStream.forEach(function(car_rental_pb:Car c) {
+        io:println("Available: " + c.plate + " " + c.make + " " + c.model + " $" + c.daily_price.toString());
     });
 
-    io:println("[showAvailableCars] done.");
-    return;
-}
+    // 4) Search for a car
+    io:println("\n-- Search for ABC-123 (customer u1) --");
+    car_rental_pb:CarResponse searchResp = 
+        check client->search_car({plate: "ABC-123", context: {user_id: "u1"}});
+    io:println("SearchCar -> " + searchResp.message);
 
-function searchForCar(car_rental_pb:CarRentalClient client, string plate) returns error? {
-    io:println("[searchForCar] looking for plate: " + plate);
-    car_rental_pb:SearchCarResponse res = check client->SearchCar({ plate: plate });
-    if res.found {
-        io:println("[searchForCar] found: " + res.car.make + " " + res.car.model + " (" + res.car.plate + ")");
-    } else {
-        io:println("[searchForCar] not found -> " + res.message);
+    // 5) Add to cart
+    io:println("\n-- Add to cart (u1 adds ABC-123) --");
+    car_rental_pb:StatusResponse cartResp = check client->add_to_cart({
+        user_id: "u1",
+        plate: "ABC-123",
+        start_date: "2025-09-25",
+        end_date: "2025-09-27"
+    });
+    io:println("AddToCart -> " + cartResp.message);
+
+    // 6) Place reservation
+    io:println("\n-- Place reservation (u1) --");
+    car_rental_pb:ReservationResponse resResp = check client->place_reservation({
+        user_id: "u1"
+    });
+    io:println("Reservation -> " + resResp.message);
+    if resResp.reservation is car_rental_pb:Reservation {
+        io:println("Reservation id: " + resResp.reservation.id + 
+            " total: " + resResp.reservation.total_price.toString());
     }
-    return;
-}
 
-function addItemToCart(
-        car_rental_pb:CarRentalClient client,
-        string userId,
-        string plate,
-        string startDate,
-        string endDate) returns error? {
-
-    io:println("[addItemToCart] user=" + userId + ", plate=" + plate);
-    car_rental_pb:AddToCartResponse resp = check client->AddToCart({
-        user_id: userId,
-        plate: plate,
-        start_date: startDate,
-        end_date: endDate
-    });
-    io:println("[addItemToCart] ok=" + resp.ok.toString() + ", msg=\"" + resp.message + "\"");
-    return;
-}
-
-function placeReservationForUser(car_rental_pb:CarRentalClient client, string userId) returns error? {
-    io:println("[placeReservationForUser] placing reservation for " + userId + " ...");
-    car_rental_pb:PlaceReservationResponse resp = check client->PlaceReservation({
-        id: userId,
-        name: "",
-        email: "",
-        role: car_rental_pb:UserRole.ROLE_CUSTOMER
-    });
-    if resp.ok {
-        io:println("[placeReservationForUser] success! total_price=" + resp.total_price.toString());
-    } else {
-        io:println("[placeReservationForUser] failed -> " + resp.message);
-    }
-    return;
+    io:println("\n=== Demo done ===");
 }
